@@ -1,0 +1,31 @@
+---
+- name: Prepare pgbench loader nodes
+  hosts: pgbench_loaders
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: Wait for SSH
+      ansible.builtin.wait_for_connection:
+        delay: 5
+        timeout: 300
+
+    - name: Gather facts
+      ansible.builtin.setup:
+
+    - name: Install pgbench client package
+      ansible.builtin.apt:
+        name:
+          - postgresql-client
+          - python3
+        state: present
+        update_cache: true
+
+    - name: Verify pgbench is available
+      ansible.builtin.command: pgbench --version
+      changed_when: false
+      register: pgbench_version
+
+    - name: Show pgbench version
+      ansible.builtin.debug:
+        var: pgbench_version.stdout

@@ -1,0 +1,60 @@
+---
+- name: Run pgbench from loader nodes
+  hosts: pgbench_loaders
+  gather_facts: false
+
+  vars:
+    pgbench_environment:
+      PGPASSWORD: "{{ pg_password }}"
+      PGSSLMODE: "{{ pg_sslmode }}"
+
+  tasks:
+    - name: Initialize pgbench schema
+      ansible.builtin.command: >-
+        pgbench
+        --initialize
+        --scale {{ pgbench_scale }}
+        --host {{ pg_host }}
+        --port {{ pg_port }}
+        --username {{ pg_user }}
+        {{ pgbench_extra_args }}
+        {{ pg_database }}
+      environment: "{{ pgbench_environment }}"
+      register: pgbench_initialize
+      when: pgbench_mode == "initialize"
+
+    - name: Show initialize output
+      ansible.builtin.debug:
+        var: pgbench_initialize.stdout_lines
+      when: pgbench_mode == "initialize"
+
+    - name: Run pgbench workload
+      ansible.builtin.command: >-
+        pgbench
+        --client {{ pgbench_clients }}
+        --jobs {{ pgbench_jobs }}
+        {% if pgbench_time | int > 0 %}--time {{ pgbench_time }}{% endif %}
+        {% if pgbench_transactions | int > 0 %}--transactions {{ pgbench_transactions }}{% endif %}
+        {% if pgbench_rate | int > 0 %}--rate {{ pgbench_rate }}{% endif %}
+        {% if pgbench_progress | int > 0 %}--progress {{ pgbench_progress }}{% endif %}
+        --host {{ pg_host }}
+        --port {{ pg_port }}
+        --username {{ pg_user }}
+        {{ pgbench_extra_args }}
+        {{ pg_database }}
+      environment: "{{ pgbench_environment }}"
+      changed_when: false
+      register: pgbench_run
+      when: pgbench_mode == "run"
+
+    - name: Show run stdout
+      ansible.builtin.debug:
+        var: pgbench_run.stdout_lines
+      when: pgbench_mode == "run"
+
+    - name: Show run stderr
+      ansible.builtin.debug:
+        var: pgbench_run.stderr_lines
+      when:
+        - pgbench_mode == "run"
+        - pgbench_run.stderr_lines | length > 0

@@ -1,0 +1,35 @@
+# Generated deployment workspace
+.deploy-pgbench/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.python-version
+.venv/
+venv/
+env/
+
+# Ansible
+*.retry
+pgbench-vars-*.json
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+terraform.tfvars
+terraform.tfvars.json
+*.auto.tfvars
+*.auto.tfvars.json
+
+# Local environment
+.env
+.env.*
+.DS_Store
