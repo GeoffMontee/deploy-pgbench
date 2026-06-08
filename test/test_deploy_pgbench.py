@@ -51,6 +51,14 @@ def test_run_parser_sets_expected_defaults():
     assert args.limit == "pgbench_loaders"
 
 
+def test_redeploy_parser_sets_expected_defaults():
+    args = parse_args("redeploy", "--provider", "aws")
+
+    assert args.name == "pgbench"
+    assert args.work_dir == ".deploy-pgbench"
+    assert args.limit == "pgbench_loaders"
+
+
 def test_deploy_parser_accepts_owner_tag():
     args = parse_args("deploy", "--provider", "aws", "--owner", "data-platform")
 
@@ -168,6 +176,42 @@ def test_write_inventory_rejects_empty_hosts(tmp_path):
             {"ansible_hosts": []},
             {"ssh_private_key_path": "/tmp/key.pem", "ssh_user": "ubuntu"},
         )
+
+
+def test_redeploy_reruns_setup_playbook_on_existing_inventory(tmp_path, monkeypatch):
+    stack_dir = tmp_path / "aws-pgbench"
+    stack_dir.mkdir()
+    (stack_dir / "deploy_pgbench_config.json").write_text("{}")
+    (stack_dir / "inventory.ini").write_text("[pgbench_loaders]\nloader_0 ansible_host=203.0.113.10\n")
+    (stack_dir / "setup_pgbench.yml").write_text("---\n# stale playbook\n")
+    calls = []
+
+    monkeypatch.setattr(deploy_pgbench, "require_executable", lambda name: calls.append(("require", name)))
+    monkeypatch.setattr(
+        deploy_pgbench,
+        "run_ansible",
+        lambda stack_dir, playbook, **kwargs: calls.append(("ansible", stack_dir, playbook, kwargs)),
+    )
+    args = argparse.Namespace(work_dir=str(tmp_path), provider="aws", name="pgbench", limit="pgbench_loaders")
+
+    deploy_pgbench.redeploy_command(args)
+
+    assert calls == [
+        ("require", "ansible-playbook"),
+        ("ansible", stack_dir, "setup_pgbench.yml", {"limit": "pgbench_loaders"}),
+    ]
+    assert "postgresql-contrib" in (stack_dir / "setup_pgbench.yml").read_text()
+
+
+def test_redeploy_requires_existing_inventory(tmp_path, monkeypatch):
+    stack_dir = tmp_path / "aws-pgbench"
+    stack_dir.mkdir()
+    (stack_dir / "deploy_pgbench_config.json").write_text("{}")
+    monkeypatch.setattr(deploy_pgbench, "require_executable", lambda name: None)
+    args = argparse.Namespace(work_dir=str(tmp_path), provider="aws", name="pgbench", limit="pgbench_loaders")
+
+    with pytest.raises(deploy_pgbench.PgbenchDeployError, match="missing inventory file"):
+        deploy_pgbench.redeploy_command(args)
 
 
 def test_resolve_existing_stack_dir_finds_single_matching_stack(tmp_path):

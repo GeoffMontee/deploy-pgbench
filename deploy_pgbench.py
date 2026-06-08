@@ -74,6 +74,16 @@ def build_parser() -> argparse.ArgumentParser:
     add_gcp_deploy_args(deploy)
     deploy.set_defaults(func=deploy_command)
 
+    redeploy = subparsers.add_parser(
+        "redeploy",
+        help="Rerun the setup playbook against the current inventory hosts.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    add_stack_args(redeploy)
+    add_optional_provider_arg(redeploy)
+    redeploy.add_argument("--limit", default="pgbench_loaders", help="Ansible host/group limit for setup.")
+    redeploy.set_defaults(func=redeploy_command)
+
     initialize = subparsers.add_parser(
         "initialize-db",
         help="Run pgbench --initialize against an existing PostgreSQL server.",
@@ -207,6 +217,17 @@ def deploy_command(args: argparse.Namespace) -> None:
     print_summary(stack_dir, outputs)
 
 
+def redeploy_command(args: argparse.Namespace) -> None:
+    require_executable("ansible-playbook")
+    stack_dir = resolve_existing_stack_dir(args.work_dir, args.provider, args.name)
+    inventory = stack_dir / "inventory.ini"
+    if not inventory.exists():
+        raise PgbenchDeployError(f"missing inventory file: {inventory}")
+
+    sync_ansible_files(stack_dir)
+    run_ansible(stack_dir, "setup_pgbench.yml", limit=args.limit)
+
+
 def initialize_db_command(args: argparse.Namespace) -> None:
     require_executable("ansible-playbook")
     stack_dir = resolve_existing_stack_dir(args.work_dir, args.provider, args.name)
@@ -274,8 +295,7 @@ def validate_deploy_args(args: argparse.Namespace) -> None:
 
 def write_stack_files(stack_dir: Path, args: argparse.Namespace, instance_type: str) -> None:
     copy_asset(ASSET_DIR / "terraform" / args.provider / "main.tf", stack_dir / "main.tf")
-    copy_asset(ASSET_DIR / "ansible" / "setup_pgbench.yml", stack_dir / "setup_pgbench.yml")
-    copy_asset(ASSET_DIR / "ansible" / "pgbench.yml", stack_dir / "pgbench.yml")
+    sync_ansible_files(stack_dir)
 
     tfvars: dict[str, Any] = {
         "name": args.name,
@@ -313,6 +333,11 @@ def write_stack_files(stack_dir: Path, args: argparse.Namespace, instance_type: 
         )
 
     write_json(stack_dir / "terraform.tfvars.json", tfvars)
+
+
+def sync_ansible_files(stack_dir: Path) -> None:
+    copy_asset(ASSET_DIR / "ansible" / "setup_pgbench.yml", stack_dir / "setup_pgbench.yml")
+    copy_asset(ASSET_DIR / "ansible" / "pgbench.yml", stack_dir / "pgbench.yml")
 
 
 def copy_asset(source: Path, destination: Path) -> None:

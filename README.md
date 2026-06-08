@@ -95,6 +95,23 @@ GCP options:
 - `--gcp-image`: GCE boot image. Default: `ubuntu-os-cloud/ubuntu-2404-lts-amd64`.
 - `--gcp-service-account-file`: Path to a GCP service account JSON credentials file for Terraform. Default: `GOOGLE_APPLICATION_CREDENTIALS`, or empty. If empty, the Google provider uses its standard application default credential lookup.
 
+## Redeploy Loader Setup
+
+Rerun the Ansible setup playbook against the hosts currently listed in the generated inventory:
+
+```sh
+python3 deploy_pgbench.py redeploy --provider aws
+```
+
+`redeploy` does not run Terraform and does not refresh hosts from Terraform outputs. It uses the current `.deploy-pgbench/<provider>-<name>/inventory.ini`, refreshes the Ansible playbooks from `ansible/`, and reruns `setup_pgbench.yml`.
+
+### `redeploy` Options
+
+- `--work-dir`: Directory containing generated Terraform and Ansible files. Default: `.deploy-pgbench`.
+- `--name`: Stack name. Default: `pgbench`.
+- `--provider`: Provider for the stack. Optional when only one matching stack exists. Supported values: `aws`, `gcp`.
+- `--limit`: Ansible host or group limit for setup. Default: `pgbench_loaders`.
+
 ## Initialize Pgbench
 
 Initialize the pgbench schema on an existing PostgreSQL server:
