@@ -95,6 +95,29 @@ GCP options:
 - `--gcp-image`: GCE boot image. Default: `ubuntu-os-cloud/ubuntu-2404-lts-amd64`.
 - `--gcp-service-account-file`: Path to a GCP service account JSON credentials file for Terraform. Default: `GOOGLE_APPLICATION_CREDENTIALS`, or empty. If empty, the Google provider uses its standard application default credential lookup.
 
+## Add Loader Nodes
+
+Increase the loader count for an existing stack:
+
+```sh
+python3 deploy_pgbench.py add-loaders \
+  --provider aws \
+  --nodes 2 \
+  --auto-approve
+```
+
+`add-loaders` reads the existing generated Terraform variables, increments `node_count`, runs `terraform apply`, regenerates `inventory.ini`, and runs setup on the newly added loader hosts by default.
+
+### `add-loaders` Options
+
+- `--work-dir`: Directory containing generated Terraform and Ansible files. Default: `.deploy-pgbench`.
+- `--name`: Stack name. Default: `pgbench`.
+- `--provider`: Provider for the stack. Optional when only one matching stack exists. Supported values: `aws`, `gcp`.
+- `--nodes`: Number of additional pgbench loader nodes to add. Default: `1`.
+- `--limit`: Ansible host or group limit for setup. Defaults to the newly added loader hostnames.
+- `--skip-setup`: Skip the Ansible package installation step.
+- `--auto-approve`: Pass `-auto-approve` to `terraform apply`.
+
 ## Redeploy Loader Setup
 
 Rerun the Ansible setup playbook against the hosts currently listed in the generated inventory:
@@ -124,6 +147,7 @@ python3 deploy_pgbench.py initialize-db \
   --pg-host postgres.example.com \
   --pg-user benchmark \
   --pg-database benchmark \
+  --pg-schema bench \
   --scale 1000
 ```
 
@@ -143,6 +167,7 @@ PostgreSQL connection options:
 - `--pg-port`: Existing PostgreSQL port. Default: `5432`.
 - `--pg-user`: PostgreSQL user. Required.
 - `--pg-database`: PostgreSQL database. Required.
+- `--pg-schema`: PostgreSQL schema to use for pgbench via `search_path`. The schema must already exist if provided.
 - `--pg-password`: PostgreSQL password. Prefer `--pg-password-env` to avoid shell history.
 - `--pg-password-env`: Environment variable containing the password. Default: `PGPASSWORD`.
 - `--pg-sslmode`: libpq `PGSSLMODE` used by pgbench. Default: `prefer`.
@@ -167,6 +192,7 @@ python3 deploy_pgbench.py run \
   --pg-host postgres.example.com \
   --pg-user benchmark \
   --pg-database benchmark \
+  --pg-schema bench \
   --clients 64 \
   --jobs 16 \
   --time 600 \
@@ -191,6 +217,7 @@ PostgreSQL connection options:
 - `--pg-port`: Existing PostgreSQL port. Default: `5432`.
 - `--pg-user`: PostgreSQL user. Required.
 - `--pg-database`: PostgreSQL database. Required.
+- `--pg-schema`: PostgreSQL schema to use for pgbench via `search_path`. The schema must already exist if provided.
 - `--pg-password`: PostgreSQL password. Prefer `--pg-password-env` to avoid shell history.
 - `--pg-password-env`: Environment variable containing the password. Default: `PGPASSWORD`.
 - `--pg-sslmode`: libpq `PGSSLMODE` used by pgbench. Default: `prefer`.

@@ -84,6 +84,19 @@ def build_parser() -> argparse.ArgumentParser:
     add_gcp_deploy_args(deploy)
     deploy.set_defaults(func=deploy_command)
 
+    add_loaders = subparsers.add_parser(
+        "add-loaders",
+        help="Add loader nodes to an existing stack.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    add_stack_args(add_loaders)
+    add_optional_provider_arg(add_loaders)
+    add_loaders.add_argument("--nodes", type=positive_int, default=1, help="Number of additional pgbench loader nodes.")
+    add_loaders.add_argument("--limit", default="", help="Ansible host/group limit for setup. Defaults to newly added loaders.")
+    add_loaders.add_argument("--skip-setup", action="store_true", help="Skip the Ansible package installation step.")
+    add_loaders.add_argument("--auto-approve", action="store_true", help="Pass -auto-approve to terraform apply.")
+    add_loaders.set_defaults(func=add_loaders_command)
+
     redeploy = subparsers.add_parser(
         "redeploy",
         help="Rerun the setup playbook against the current inventory hosts.",
@@ -206,6 +219,7 @@ def add_pg_connection_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--pg-port", type=positive_int, default=5432, help="Existing PostgreSQL port.")
     parser.add_argument("--pg-user", required=True, help="PostgreSQL user.")
     parser.add_argument("--pg-database", required=True, help="PostgreSQL database.")
+    parser.add_argument("--pg-schema", default="", help="PostgreSQL schema to use for pgbench via search_path.")
     parser.add_argument("--pg-password", default="", help="PostgreSQL password. Prefer --pg-password-env for shell history.")
     parser.add_argument("--pg-password-env", default="PGPASSWORD", help="Environment variable containing the password.")
     parser.add_argument("--pg-sslmode", default="prefer", help="libpq PGSSLMODE used by pgbench.")
@@ -247,6 +261,50 @@ def deploy_command(args: argparse.Namespace) -> None:
 
     if not args.skip_setup:
         run_ansible(stack_dir, "setup_pgbench.yml")
+
+    print_summary(stack_dir, outputs)
+
+
+def add_loaders_command(args: argparse.Namespace) -> None:
+    require_executable("terraform")
+    if not args.skip_setup:
+        require_executable("ansible-playbook")
+
+    stack_dir = resolve_existing_stack_dir(args.work_dir, args.provider, args.name)
+    config = read_config(stack_dir)
+    provider = config.get("provider") or args.provider
+    if provider not in {"aws", "gcp"}:
+        raise PgbenchDeployError(f"missing or unsupported provider in config: {provider!r}")
+
+    tfvars_path = stack_dir / "terraform.tfvars.json"
+    if not tfvars_path.exists():
+        raise PgbenchDeployError(f"missing Terraform variables file: {tfvars_path}")
+
+    tfvars = json.loads(tfvars_path.read_text())
+    current_count = int(tfvars.get("node_count", config.get("node_count", 0)))
+    if current_count <= 0:
+        raise PgbenchDeployError("current loader count must be greater than 0")
+
+    new_count = current_count + args.nodes
+    tfvars["node_count"] = new_count
+    config["node_count"] = new_count
+
+    copy_asset(ASSET_DIR / "terraform" / provider / "main.tf", stack_dir / "main.tf")
+    sync_ansible_files(stack_dir)
+    write_json(tfvars_path, tfvars)
+    write_json(stack_dir / "deploy_pgbench_config.json", config)
+
+    run_process(["terraform", "init"], cwd=stack_dir)
+    apply_cmd = ["terraform", "apply"]
+    if args.auto_approve:
+        apply_cmd.append("-auto-approve")
+    run_process(apply_cmd, cwd=stack_dir)
+
+    outputs = terraform_outputs(stack_dir)
+    write_inventory(stack_dir, outputs, config)
+
+    if not args.skip_setup:
+        run_ansible(stack_dir, "setup_pgbench.yml", limit=args.limit or loader_limit(current_count, new_count))
 
     print_summary(stack_dir, outputs)
 
@@ -427,6 +485,7 @@ def pg_vars(args: argparse.Namespace, mode: str) -> dict[str, Any]:
         "pg_port": args.pg_port,
         "pg_user": args.pg_user,
         "pg_database": args.pg_database,
+        "pg_schema": args.pg_schema,
         "pg_password": password,
         "pg_sslmode": args.pg_sslmode,
         "pgbench_extra_args": args.extra_args,
@@ -520,6 +579,10 @@ def get_stack_dir(work_dir: str, provider: str, name: str) -> Path:
 
 def default_instance_type(provider: str) -> str:
     return AWS_DEFAULT_INSTANCE_TYPE if provider == "aws" else GCP_DEFAULT_INSTANCE_TYPE
+
+
+def loader_limit(start: int, stop: int) -> str:
+    return ":".join(f"loader_{index}" for index in range(start, stop))
 
 
 def expand_path(path: str) -> Path:

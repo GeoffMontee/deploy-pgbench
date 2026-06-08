@@ -4,9 +4,11 @@
   gather_facts: false
 
   vars:
-    pgbench_environment:
+    pgbench_base_environment:
       PGPASSWORD: "{{ pg_password }}"
       PGSSLMODE: "{{ pg_sslmode }}"
+    pgbench_schema_environment: "{{ {'PGOPTIONS': '-c search_path=' ~ pg_schema} if pg_schema | length > 0 else {} }}"
+    pgbench_environment: "{{ pgbench_base_environment | combine(pgbench_schema_environment) }}"
 
   tasks:
     - name: Wait for SSH

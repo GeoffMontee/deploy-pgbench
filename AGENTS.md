@@ -20,6 +20,7 @@ This repository contains a Python CLI, `deploy_pgbench.py`, that copies Terrafor
 ## Subcommand Behavior
 
 - `deploy` should create or update loader infrastructure only. It may generate Terraform and Ansible files, run `terraform apply`, and optionally run the setup playbook.
+- `add-loaders` should only increase the existing stack's Terraform `node_count`, refresh inventory, and run setup for the newly added loaders unless the user provides a broader limit.
 - `redeploy` should be Ansible-only: use the current `inventory.ini`, refresh Ansible playbooks from `ansible/`, and rerun setup without running Terraform.
 - `initialize-db` should run `pgbench --initialize` against the provided PostgreSQL target and should default to a single loader unless the user chooses another Ansible limit.
 - `run` should execute pgbench workloads against the provided PostgreSQL target and default to all loader nodes.

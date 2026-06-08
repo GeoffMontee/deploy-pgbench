@@ -42,8 +42,11 @@ def test_run_parser_sets_expected_defaults():
         "benchmark",
         "--pg-database",
         "benchmark",
+        "--pg-schema",
+        "bench",
     )
 
+    assert args.pg_schema == "bench"
     assert args.clients == 64
     assert args.jobs == 16
     assert args.time == 600
@@ -68,6 +71,16 @@ def test_initialize_parser_sets_async_defaults():
 
     assert args.async_timeout == deploy_pgbench.DEFAULT_PGBENCH_ASYNC_TIMEOUT
     assert args.poll_interval == deploy_pgbench.DEFAULT_PGBENCH_POLL_INTERVAL
+
+
+def test_add_loaders_parser_sets_expected_defaults():
+    args = parse_args("add-loaders", "--provider", "aws")
+
+    assert args.name == "pgbench"
+    assert args.work_dir == ".deploy-pgbench"
+    assert args.nodes == 1
+    assert args.limit == ""
+    assert args.skip_setup is False
 
 
 def test_redeploy_parser_sets_expected_defaults():
@@ -125,6 +138,8 @@ def test_pgbench_playbook_has_connection_preflight():
     assert "Fail when initialize fails" in playbook
     assert "Show run stderr" in playbook
     assert "Fail when run fails" in playbook
+    assert "PGOPTIONS" in playbook
+    assert "search_path" in playbook
 
 
 def test_pg_vars_prefers_explicit_password(monkeypatch):
@@ -134,6 +149,7 @@ def test_pg_vars_prefers_explicit_password(monkeypatch):
         pg_port=5432,
         pg_user="benchmark",
         pg_database="benchmark",
+        pg_schema="bench",
         pg_password="from-arg",
         pg_password_env="PGPASSWORD",
         pg_sslmode="require",
@@ -156,6 +172,7 @@ def test_pg_vars_prefers_explicit_password(monkeypatch):
         "pg_port": 5432,
         "pg_user": "benchmark",
         "pg_database": "benchmark",
+        "pg_schema": "bench",
         "pg_password": "from-arg",
         "pg_sslmode": "require",
         "pgbench_extra_args": "--protocol prepared",
@@ -177,6 +194,7 @@ def test_pg_vars_reads_password_from_configured_environment(monkeypatch):
         pg_port=5432,
         pg_user="benchmark",
         pg_database="benchmark",
+        pg_schema="",
         pg_password="",
         pg_password_env="CUSTOM_PG_PASSWORD",
         pg_sslmode="prefer",
@@ -189,6 +207,7 @@ def test_pg_vars_reads_password_from_configured_environment(monkeypatch):
     values = deploy_pgbench.pg_vars(args, mode="initialize")
 
     assert values["pg_password"] == "from-custom-env"
+    assert values["pg_schema"] == ""
     assert values["pgbench_scale"] == 1000
     assert values["pgbench_async_timeout"] == 7200
     assert values["pgbench_poll_interval"] == 20
@@ -250,6 +269,62 @@ def test_run_ansible_preserves_user_ssh_args(tmp_path, monkeypatch):
     deploy_pgbench.run_ansible(tmp_path, "pgbench.yml")
 
     assert calls[0][1]["env"]["ANSIBLE_SSH_ARGS"] == "-o UserKnownHostsFile=/tmp/known_hosts"
+
+
+def test_loader_limit_uses_new_loader_names():
+    assert deploy_pgbench.loader_limit(1, 4) == "loader_1:loader_2:loader_3"
+
+
+def test_add_loaders_updates_count_applies_and_sets_up_new_hosts(tmp_path, monkeypatch):
+    stack_dir = tmp_path / "aws-pgbench"
+    stack_dir.mkdir()
+    (stack_dir / "deploy_pgbench_config.json").write_text(
+        json.dumps(
+            {
+                "provider": "aws",
+                "node_count": 1,
+                "ssh_user": "ubuntu",
+                "ssh_private_key_path": "/tmp/key.pem",
+            }
+        )
+    )
+    (stack_dir / "terraform.tfvars.json").write_text(json.dumps({"node_count": 1, "name": "pgbench"}))
+    calls = []
+
+    monkeypatch.setattr(deploy_pgbench, "require_executable", lambda name: calls.append(("require", name)))
+    monkeypatch.setattr(deploy_pgbench, "run_process", lambda cmd, **kwargs: calls.append(("run", cmd, kwargs)))
+    monkeypatch.setattr(
+        deploy_pgbench,
+        "terraform_outputs",
+        lambda stack_dir: {
+            "ansible_hosts": ["203.0.113.10", "203.0.113.11", "203.0.113.12"],
+            "public_ips": ["203.0.113.10", "203.0.113.11", "203.0.113.12"],
+        },
+    )
+    monkeypatch.setattr(
+        deploy_pgbench,
+        "run_ansible",
+        lambda stack_dir, playbook, **kwargs: calls.append(("ansible", stack_dir, playbook, kwargs)),
+    )
+    args = argparse.Namespace(
+        work_dir=str(tmp_path),
+        provider="aws",
+        name="pgbench",
+        nodes=2,
+        limit="",
+        skip_setup=False,
+        auto_approve=True,
+    )
+
+    deploy_pgbench.add_loaders_command(args)
+
+    tfvars = json.loads((stack_dir / "terraform.tfvars.json").read_text())
+    config = json.loads((stack_dir / "deploy_pgbench_config.json").read_text())
+    assert tfvars["node_count"] == 3
+    assert config["node_count"] == 3
+    assert "loader_2 ansible_host=203.0.113.12" in (stack_dir / "inventory.ini").read_text()
+    assert ("run", ["terraform", "apply", "-auto-approve"], {"cwd": stack_dir}) in calls
+    assert ("ansible", stack_dir, "setup_pgbench.yml", {"limit": "loader_1:loader_2"}) in calls
 
 
 def test_redeploy_reruns_setup_playbook_on_existing_inventory(tmp_path, monkeypatch):
