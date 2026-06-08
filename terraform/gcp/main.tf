@@ -10,9 +10,10 @@ terraform {
 }
 
 provider "google" {
-  project = var.gcp_project
-  region  = var.gcp_region
-  zone    = var.gcp_zone
+  project     = var.gcp_project
+  region      = var.gcp_region
+  zone        = var.gcp_zone
+  credentials = var.gcp_service_account_file == "" ? null : file(var.gcp_service_account_file)
 }
 
 variable "name" {
@@ -38,6 +39,11 @@ variable "gcp_zone" {
 
 variable "gcp_image" {
   type = string
+}
+
+variable "gcp_service_account_file" {
+  type    = string
+  default = ""
 }
 
 variable "associate_public_ip" {

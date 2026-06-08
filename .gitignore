@@ -33,3 +33,8 @@ terraform.tfvars.json
 .env
 .env.*
 .DS_Store
+
+# Local cloud credentials
+*service-account*.json
+*gcp-credentials*.json
+google-credentials*.json

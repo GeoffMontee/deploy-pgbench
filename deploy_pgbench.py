@@ -150,6 +150,11 @@ def add_gcp_deploy_args(parser: argparse.ArgumentParser) -> None:
     gcp.add_argument("--gcp-region", default="us-central1")
     gcp.add_argument("--gcp-zone", default="us-central1-a")
     gcp.add_argument("--gcp-image", default="ubuntu-os-cloud/ubuntu-2404-lts-amd64", help="GCE boot image.")
+    gcp.add_argument(
+        "--gcp-service-account-file",
+        default=os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", ""),
+        help="Path to a GCP service account JSON credentials file for Terraform.",
+    )
 
 
 def add_pg_connection_args(parser: argparse.ArgumentParser) -> None:
@@ -256,6 +261,9 @@ def validate_deploy_args(args: argparse.Namespace) -> None:
     if args.provider == "gcp" and not args.gcp_project:
         raise PgbenchDeployError("GCP deployments require --gcp-project or GOOGLE_CLOUD_PROJECT")
 
+    if args.provider == "gcp" and args.gcp_service_account_file and not expand_path(args.gcp_service_account_file).exists():
+        raise PgbenchDeployError(f"GCP service account file not found: {expand_path(args.gcp_service_account_file)}")
+
     public_key_required = args.provider == "gcp" or not args.aws_key_name
     if public_key_required and not expand_path(args.ssh_public_key_path).exists():
         raise PgbenchDeployError(f"SSH public key not found: {expand_path(args.ssh_public_key_path)}")
@@ -299,6 +307,7 @@ def write_stack_files(stack_dir: Path, args: argparse.Namespace, instance_type: 
                 "gcp_region": args.gcp_region,
                 "gcp_zone": args.gcp_zone,
                 "gcp_image": args.gcp_image,
+                "gcp_service_account_file": str(expand_path(args.gcp_service_account_file)) if args.gcp_service_account_file else "",
                 "ssh_user": args.ssh_user,
             }
         )

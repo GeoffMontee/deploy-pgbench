@@ -57,6 +57,18 @@ def test_deploy_parser_accepts_owner_tag():
     assert args.owner == "data-platform"
 
 
+def test_deploy_parser_accepts_gcp_service_account_file():
+    args = parse_args(
+        "deploy",
+        "--provider",
+        "gcp",
+        "--gcp-service-account-file",
+        "/tmp/service-account.json",
+    )
+
+    assert args.gcp_service_account_file == "/tmp/service-account.json"
+
+
 def test_infrastructure_assets_are_external_files():
     assert not hasattr(deploy_pgbench, "AWS_TERRAFORM")
     assert not hasattr(deploy_pgbench, "GCP_TERRAFORM")
@@ -185,6 +197,22 @@ def test_validate_deploy_args_requires_vpc_and_subnet_together():
         deploy_pgbench.validate_deploy_args(args)
 
 
+def test_validate_deploy_args_rejects_missing_gcp_service_account_file():
+    args = argparse.Namespace(
+        vpc_id="",
+        subnet_id="",
+        provider="gcp",
+        gcp_project="project-id",
+        gcp_service_account_file="/tmp/missing-service-account.json",
+        aws_key_name="",
+        ssh_public_key_path="/tmp/missing.pub",
+        ssh_private_key_path="/tmp/missing",
+    )
+
+    with pytest.raises(deploy_pgbench.PgbenchDeployError, match="GCP service account file not found"):
+        deploy_pgbench.validate_deploy_args(args)
+
+
 def test_write_stack_files_writes_aws_tfvars(tmp_path):
     public_key = tmp_path / "id_rsa.pub"
     public_key.write_text("ssh-rsa AAAATEST user@example.com\n")
@@ -218,3 +246,36 @@ def test_write_stack_files_writes_aws_tfvars(tmp_path):
     assert "Owner = var.owner" in (tmp_path / "main.tf").read_text()
     assert (tmp_path / "setup_pgbench.yml").exists()
     assert (tmp_path / "pgbench.yml").exists()
+
+
+def test_write_stack_files_writes_gcp_service_account_file(tmp_path):
+    public_key = tmp_path / "id_rsa.pub"
+    credentials_file = tmp_path / "service-account.json"
+    public_key.write_text("ssh-rsa AAAATEST user@example.com\n")
+    credentials_file.write_text('{"type": "service_account"}\n')
+    args = argparse.Namespace(
+        provider="gcp",
+        name="bench",
+        nodes=1,
+        ssh_user="ubuntu",
+        ssh_public_key_path=str(public_key),
+        ssh_cidr="203.0.113.0/24",
+        vpc_id="",
+        subnet_id="",
+        vpc_cidr="10.44.0.0/16",
+        subnet_cidr="10.44.1.0/24",
+        owner="data-platform",
+        private_only=False,
+        gcp_project="project-id",
+        gcp_region="us-central1",
+        gcp_zone="us-central1-a",
+        gcp_image="ubuntu-os-cloud/ubuntu-2404-lts-amd64",
+        gcp_service_account_file=str(credentials_file),
+    )
+
+    deploy_pgbench.write_stack_files(tmp_path, args, "c4-standard-16")
+
+    tfvars = json.loads((tmp_path / "terraform.tfvars.json").read_text())
+    assert tfvars["gcp_service_account_file"] == str(credentials_file.resolve())
+    assert tfvars["gcp_project"] == "project-id"
+    assert "credentials = var.gcp_service_account_file" in (tmp_path / "main.tf").read_text()

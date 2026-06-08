@@ -9,7 +9,7 @@ The script does not deploy PostgreSQL. You provide the PostgreSQL host, port, us
 - Python 3.9 or newer
 - Terraform in `PATH`
 - Ansible in `PATH`
-- AWS or GCP credentials configured for Terraform
+- AWS or GCP credentials configured for Terraform. For GCP, pass `--gcp-service-account-file` to use a service account JSON file explicitly.
 - An SSH key pair for connecting to the loader nodes
 
 Install the Python dependency:
@@ -38,6 +38,7 @@ python3 deploy_pgbench.py deploy \
   --provider gcp \
   --name pgbench \
   --gcp-project my-project \
+  --gcp-service-account-file ~/.config/gcloud/pgbench-service-account.json \
   --gcp-region us-central1 \
   --gcp-zone us-central1-a \
   --nodes 2 \
@@ -92,6 +93,7 @@ GCP options:
 - `--gcp-region`: GCP region. Default: `us-central1`.
 - `--gcp-zone`: GCP zone. Default: `us-central1-a`.
 - `--gcp-image`: GCE boot image. Default: `ubuntu-os-cloud/ubuntu-2404-lts-amd64`.
+- `--gcp-service-account-file`: Path to a GCP service account JSON credentials file for Terraform. Default: `GOOGLE_APPLICATION_CREDENTIALS`, or empty. If empty, the Google provider uses its standard application default credential lookup.
 
 ## Initialize Pgbench
 
