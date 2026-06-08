@@ -48,7 +48,26 @@ def test_run_parser_sets_expected_defaults():
     assert args.jobs == 16
     assert args.time == 600
     assert args.progress == 10
+    assert args.async_timeout == deploy_pgbench.DEFAULT_PGBENCH_ASYNC_TIMEOUT
+    assert args.poll_interval == deploy_pgbench.DEFAULT_PGBENCH_POLL_INTERVAL
     assert args.limit == "pgbench_loaders"
+
+
+def test_initialize_parser_sets_async_defaults():
+    args = parse_args(
+        "initialize-db",
+        "--provider",
+        "aws",
+        "--pg-host",
+        "postgres.example.com",
+        "--pg-user",
+        "benchmark",
+        "--pg-database",
+        "benchmark",
+    )
+
+    assert args.async_timeout == deploy_pgbench.DEFAULT_PGBENCH_ASYNC_TIMEOUT
+    assert args.poll_interval == deploy_pgbench.DEFAULT_PGBENCH_POLL_INTERVAL
 
 
 def test_redeploy_parser_sets_expected_defaults():
@@ -99,6 +118,13 @@ def test_pgbench_playbook_has_connection_preflight():
 
     assert "ansible.builtin.wait_for_connection" in playbook
     assert "pgbench --version" in playbook
+    assert "async: \"{{ pgbench_async_timeout }}\"" in playbook
+    assert "poll: \"{{ pgbench_poll_interval }}\"" in playbook
+    assert "failed_when: false" in playbook
+    assert "Show initialize stderr" in playbook
+    assert "Fail when initialize fails" in playbook
+    assert "Show run stderr" in playbook
+    assert "Fail when run fails" in playbook
 
 
 def test_pg_vars_prefers_explicit_password(monkeypatch):
@@ -118,6 +144,8 @@ def test_pg_vars_prefers_explicit_password(monkeypatch):
         transactions=0,
         rate=0,
         progress=5,
+        async_timeout=7200,
+        poll_interval=20,
     )
 
     values = deploy_pgbench.pg_vars(args, mode="run")
@@ -137,6 +165,8 @@ def test_pg_vars_prefers_explicit_password(monkeypatch):
         "pgbench_transactions": 0,
         "pgbench_rate": 0,
         "pgbench_progress": 5,
+        "pgbench_async_timeout": 7200,
+        "pgbench_poll_interval": 20,
     }
 
 
@@ -152,12 +182,16 @@ def test_pg_vars_reads_password_from_configured_environment(monkeypatch):
         pg_sslmode="prefer",
         extra_args="",
         scale=1000,
+        async_timeout=7200,
+        poll_interval=20,
     )
 
     values = deploy_pgbench.pg_vars(args, mode="initialize")
 
     assert values["pg_password"] == "from-custom-env"
     assert values["pgbench_scale"] == 1000
+    assert values["pgbench_async_timeout"] == 7200
+    assert values["pgbench_poll_interval"] == 20
     assert "pgbench_clients" not in values
 
 

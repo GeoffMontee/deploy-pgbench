@@ -17,6 +17,8 @@ from typing import Any, Optional
 AWS_DEFAULT_INSTANCE_TYPE = "c7i.4xlarge"
 GCP_DEFAULT_INSTANCE_TYPE = "c4-standard-16"
 DEFAULT_WORK_DIR = ".deploy-pgbench"
+DEFAULT_PGBENCH_ASYNC_TIMEOUT = 86400
+DEFAULT_PGBENCH_POLL_INTERVAL = 15
 DEFAULT_ANSIBLE_SSH_ARGS = (
     "-C "
     "-o ControlMaster=no "
@@ -101,6 +103,18 @@ def build_parser() -> argparse.ArgumentParser:
     add_optional_provider_arg(initialize)
     add_pg_connection_args(initialize)
     initialize.add_argument("--scale", type=positive_int, default=100, help="pgbench scale factor.")
+    initialize.add_argument(
+        "--async-timeout",
+        type=positive_int,
+        default=DEFAULT_PGBENCH_ASYNC_TIMEOUT,
+        help="Maximum seconds to allow the remote pgbench initialize job to run.",
+    )
+    initialize.add_argument(
+        "--poll-interval",
+        type=positive_int,
+        default=DEFAULT_PGBENCH_POLL_INTERVAL,
+        help="Seconds between Ansible polls while waiting for the remote pgbench initialize job.",
+    )
     initialize.add_argument("--extra-args", default="", help="Extra arguments appended to pgbench.")
     initialize.add_argument("--limit", default="loader_0", help="Ansible host/group limit for initialization.")
     initialize.set_defaults(func=initialize_db_command)
@@ -119,6 +133,18 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--transactions", type=non_negative_int, default=0, help="Transactions per client. Set 0 to omit.")
     run.add_argument("--rate", type=non_negative_int, default=0, help="Target rate per loader. Set 0 to omit.")
     run.add_argument("--progress", type=non_negative_int, default=10, help="Progress interval in seconds. Set 0 to omit.")
+    run.add_argument(
+        "--async-timeout",
+        type=positive_int,
+        default=DEFAULT_PGBENCH_ASYNC_TIMEOUT,
+        help="Maximum seconds to allow the remote pgbench workload job to run.",
+    )
+    run.add_argument(
+        "--poll-interval",
+        type=positive_int,
+        default=DEFAULT_PGBENCH_POLL_INTERVAL,
+        help="Seconds between Ansible polls while waiting for remote pgbench workloads.",
+    )
     run.add_argument("--extra-args", default="", help="Extra arguments appended to pgbench.")
     run.add_argument("--limit", default="pgbench_loaders", help="Ansible host/group limit for the workload.")
     run.set_defaults(func=run_command)
@@ -404,6 +430,8 @@ def pg_vars(args: argparse.Namespace, mode: str) -> dict[str, Any]:
         "pg_password": password,
         "pg_sslmode": args.pg_sslmode,
         "pgbench_extra_args": args.extra_args,
+        "pgbench_async_timeout": args.async_timeout,
+        "pgbench_poll_interval": args.poll_interval,
     }
 
     if mode == "initialize":

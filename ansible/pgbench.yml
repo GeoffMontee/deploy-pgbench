@@ -28,13 +28,34 @@
         {{ pgbench_extra_args }}
         {{ pg_database }}
       environment: "{{ pgbench_environment }}"
+      async: "{{ pgbench_async_timeout }}"
+      poll: "{{ pgbench_poll_interval }}"
       register: pgbench_initialize
+      failed_when: false
       when: pgbench_mode == "initialize"
 
-    - name: Show initialize output
+    - name: Show initialize stdout
       ansible.builtin.debug:
-        var: pgbench_initialize.stdout_lines
-      when: pgbench_mode == "initialize"
+        msg: "{{ pgbench_initialize.stdout_lines }}"
+      when:
+        - pgbench_mode == "initialize"
+        - pgbench_initialize.stdout_lines | default([]) | length > 0
+
+    - name: Show initialize stderr
+      ansible.builtin.debug:
+        msg: "{{ pgbench_initialize.stderr_lines }}"
+      when:
+        - pgbench_mode == "initialize"
+        - pgbench_initialize.stderr_lines | default([]) | length > 0
+
+    - name: Fail when initialize fails
+      ansible.builtin.fail:
+        msg: >-
+          pgbench initialize failed with rc={{ pgbench_initialize.rc | default('unknown') }}.
+          {{ pgbench_initialize.msg | default('See stdout/stderr above.') }}
+      when:
+        - pgbench_mode == "initialize"
+        - pgbench_initialize.rc is not defined or pgbench_initialize.rc | int != 0
 
     - name: Run pgbench workload
       ansible.builtin.command: >-
@@ -51,18 +72,32 @@
         {{ pgbench_extra_args }}
         {{ pg_database }}
       environment: "{{ pgbench_environment }}"
+      async: "{{ pgbench_async_timeout }}"
+      poll: "{{ pgbench_poll_interval }}"
       changed_when: false
+      failed_when: false
       register: pgbench_run
       when: pgbench_mode == "run"
 
     - name: Show run stdout
       ansible.builtin.debug:
-        var: pgbench_run.stdout_lines
-      when: pgbench_mode == "run"
+        msg: "{{ pgbench_run.stdout_lines }}"
+      when:
+        - pgbench_mode == "run"
+        - pgbench_run.stdout_lines | default([]) | length > 0
 
     - name: Show run stderr
       ansible.builtin.debug:
-        var: pgbench_run.stderr_lines
+        msg: "{{ pgbench_run.stderr_lines }}"
       when:
         - pgbench_mode == "run"
-        - pgbench_run.stderr_lines | length > 0
+        - pgbench_run.stderr_lines | default([]) | length > 0
+
+    - name: Fail when run fails
+      ansible.builtin.fail:
+        msg: >-
+          pgbench run failed with rc={{ pgbench_run.rc | default('unknown') }}.
+          {{ pgbench_run.msg | default('See stdout/stderr above.') }}
+      when:
+        - pgbench_mode == "run"
+        - pgbench_run.rc is not defined or pgbench_run.rc | int != 0

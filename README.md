@@ -150,6 +150,8 @@ PostgreSQL connection options:
 Pgbench options:
 
 - `--scale`: pgbench scale factor. Default: `100`.
+- `--async-timeout`: Maximum seconds to allow the remote pgbench initialize job to run. Default: `86400`.
+- `--poll-interval`: Seconds between Ansible polls while waiting for the remote pgbench initialize job. Default: `15`.
 - `--extra-args`: Extra arguments appended to `pgbench`.
 - `--limit`: Ansible host or group limit for initialization. Default: `loader_0`.
 
@@ -173,7 +175,7 @@ python3 deploy_pgbench.py run \
 
 Additional pgbench flags can be passed with `--extra-args`.
 
-The script refreshes the copied `pgbench.yml` before each `run` or `initialize-db` execution. Ansible runs with SSH keepalives and SSH multiplexing disabled by default to avoid idle pgbench initialization jobs failing with `Shared connection ... closed`. To override those SSH defaults, set `ANSIBLE_SSH_ARGS` before running the script.
+The script refreshes the copied `pgbench.yml` before each `run` or `initialize-db` execution. Pgbench runs through Ansible async polling, so the remote job is not tied to one long-lived SSH command session. Ansible also runs with SSH keepalives and SSH multiplexing disabled by default to avoid idle pgbench jobs failing with `Shared connection ... closed` or `Broken pipe`. To override those SSH defaults, set `ANSIBLE_SSH_ARGS` before running the script.
 
 ### `run` Options
 
@@ -201,6 +203,8 @@ Pgbench workload options:
 - `--transactions`: Transactions per client. Set `0` to omit. Default: `0`.
 - `--rate`: Target rate per loader. Set `0` to omit. Default: `0`.
 - `--progress`: Progress interval in seconds. Set `0` to omit. Default: `10`.
+- `--async-timeout`: Maximum seconds to allow the remote pgbench workload job to run. Default: `86400`.
+- `--poll-interval`: Seconds between Ansible polls while waiting for remote pgbench workloads. Default: `15`.
 - `--extra-args`: Extra arguments appended to `pgbench`.
 - `--limit`: Ansible host or group limit for the workload. Default: `pgbench_loaders`.
 
