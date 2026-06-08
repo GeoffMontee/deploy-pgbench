@@ -80,6 +80,12 @@ def test_infrastructure_assets_are_external_files():
     assert (deploy_pgbench.ASSET_DIR / "ansible" / "pgbench.yml").exists()
 
 
+def test_setup_playbook_installs_pgbench_package():
+    playbook = (deploy_pgbench.ASSET_DIR / "ansible" / "setup_pgbench.yml").read_text()
+
+    assert "postgresql-contrib" in playbook
+
+
 def test_pg_vars_prefers_explicit_password(monkeypatch):
     monkeypatch.setenv("PGPASSWORD", "from-env")
     args = argparse.Namespace(

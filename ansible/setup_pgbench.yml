@@ -17,6 +17,7 @@
       ansible.builtin.apt:
         name:
           - postgresql-client
+          - postgresql-contrib
           - python3
         state: present
         update_cache: true
