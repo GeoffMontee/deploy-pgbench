@@ -173,6 +173,8 @@ python3 deploy_pgbench.py run \
 
 Additional pgbench flags can be passed with `--extra-args`.
 
+The script refreshes the copied `pgbench.yml` before each `run` or `initialize-db` execution. Ansible runs with SSH keepalives and SSH multiplexing disabled by default to avoid idle pgbench initialization jobs failing with `Shared connection ... closed`. To override those SSH defaults, set `ANSIBLE_SSH_ARGS` before running the script.
+
 ### `run` Options
 
 Stack options:

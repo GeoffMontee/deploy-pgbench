@@ -94,6 +94,13 @@ def test_setup_playbook_installs_pgbench_package():
     assert "postgresql-contrib" in playbook
 
 
+def test_pgbench_playbook_has_connection_preflight():
+    playbook = (deploy_pgbench.ASSET_DIR / "ansible" / "pgbench.yml").read_text()
+
+    assert "ansible.builtin.wait_for_connection" in playbook
+    assert "pgbench --version" in playbook
+
+
 def test_pg_vars_prefers_explicit_password(monkeypatch):
     monkeypatch.setenv("PGPASSWORD", "from-env")
     args = argparse.Namespace(
@@ -176,6 +183,39 @@ def test_write_inventory_rejects_empty_hosts(tmp_path):
             {"ansible_hosts": []},
             {"ssh_private_key_path": "/tmp/key.pem", "ssh_user": "ubuntu"},
         )
+
+
+def test_run_ansible_sets_resilient_default_ssh_args(tmp_path, monkeypatch):
+    calls = []
+
+    monkeypatch.delenv("ANSIBLE_SSH_ARGS", raising=False)
+    monkeypatch.setattr(
+        deploy_pgbench,
+        "run_process",
+        lambda cmd, **kwargs: calls.append((cmd, kwargs)),
+    )
+
+    deploy_pgbench.run_ansible(tmp_path, "pgbench.yml", limit="loader_0")
+
+    cmd, kwargs = calls[0]
+    assert cmd == ["ansible-playbook", "-i", "inventory.ini", "pgbench.yml", "--limit", "loader_0"]
+    assert kwargs["cwd"] == tmp_path
+    assert kwargs["env"]["ANSIBLE_SSH_ARGS"] == deploy_pgbench.DEFAULT_ANSIBLE_SSH_ARGS
+
+
+def test_run_ansible_preserves_user_ssh_args(tmp_path, monkeypatch):
+    calls = []
+
+    monkeypatch.setenv("ANSIBLE_SSH_ARGS", "-o UserKnownHostsFile=/tmp/known_hosts")
+    monkeypatch.setattr(
+        deploy_pgbench,
+        "run_process",
+        lambda cmd, **kwargs: calls.append((cmd, kwargs)),
+    )
+
+    deploy_pgbench.run_ansible(tmp_path, "pgbench.yml")
+
+    assert calls[0][1]["env"]["ANSIBLE_SSH_ARGS"] == "-o UserKnownHostsFile=/tmp/known_hosts"
 
 
 def test_redeploy_reruns_setup_playbook_on_existing_inventory(tmp_path, monkeypatch):

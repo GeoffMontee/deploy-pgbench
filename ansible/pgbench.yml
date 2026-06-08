@@ -9,6 +9,14 @@
       PGSSLMODE: "{{ pg_sslmode }}"
 
   tasks:
+    - name: Wait for SSH
+      ansible.builtin.wait_for_connection:
+        timeout: 300
+
+    - name: Verify pgbench is available
+      ansible.builtin.command: pgbench --version
+      changed_when: false
+
     - name: Initialize pgbench schema
       ansible.builtin.command: >-
         pgbench

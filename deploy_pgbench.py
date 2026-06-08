@@ -17,6 +17,14 @@ from typing import Any, Optional
 AWS_DEFAULT_INSTANCE_TYPE = "c7i.4xlarge"
 GCP_DEFAULT_INSTANCE_TYPE = "c4-standard-16"
 DEFAULT_WORK_DIR = ".deploy-pgbench"
+DEFAULT_ANSIBLE_SSH_ARGS = (
+    "-C "
+    "-o ControlMaster=no "
+    "-o ControlPersist=no "
+    "-o ServerAliveInterval=30 "
+    "-o ServerAliveCountMax=6 "
+    "-o TCPKeepAlive=yes"
+)
 
 
 ASSET_DIR = Path(__file__).resolve().parent
@@ -233,6 +241,7 @@ def initialize_db_command(args: argparse.Namespace) -> None:
     stack_dir = resolve_existing_stack_dir(args.work_dir, args.provider, args.name)
     config = read_config(stack_dir)
     ensure_inventory(stack_dir, config)
+    sync_ansible_files(stack_dir)
     vars_file = write_extra_vars(stack_dir, pg_vars(args, mode="initialize"))
     try:
         run_ansible(stack_dir, "pgbench.yml", limit=args.limit, extra_vars_file=vars_file)
@@ -245,6 +254,7 @@ def run_command(args: argparse.Namespace) -> None:
     stack_dir = resolve_existing_stack_dir(args.work_dir, args.provider, args.name)
     config = read_config(stack_dir)
     ensure_inventory(stack_dir, config)
+    sync_ansible_files(stack_dir)
     vars_file = write_extra_vars(stack_dir, pg_vars(args, mode="run"))
     try:
         run_ansible(stack_dir, "pgbench.yml", limit=args.limit, extra_vars_file=vars_file)
@@ -425,7 +435,9 @@ def run_ansible(
         cmd.extend(["--limit", limit])
     if extra_vars_file:
         cmd.extend(["--extra-vars", f"@{extra_vars_file}"])
-    run_process(cmd, cwd=stack_dir)
+    env = os.environ.copy()
+    env.setdefault("ANSIBLE_SSH_ARGS", DEFAULT_ANSIBLE_SSH_ARGS)
+    run_process(cmd, cwd=stack_dir, env=env)
 
 
 def terraform_outputs(stack_dir: Path) -> dict[str, Any]:
@@ -495,6 +507,7 @@ def run_process(
     *,
     cwd: Path,
     capture: bool = False,
+    env: Optional[dict[str, str]] = None,
 ) -> subprocess.CompletedProcess[str]:
     print(f"+ {' '.join(cmd)}")
     return subprocess.run(
@@ -503,6 +516,7 @@ def run_process(
         check=True,
         text=True,
         capture_output=capture,
+        env=env,
     )
 
 
